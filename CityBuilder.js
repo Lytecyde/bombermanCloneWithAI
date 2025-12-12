@@ -1,9 +1,24 @@
-// City Builder: 12 Blue Houses with Sidewalks and Car Lanes
+// City Builder: 128 Blue Houses with Sidewalks and Car Lanes
 export default class City {
+    // noinspection DuplicatedCode
+    static houseMap = [
+        [0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 1, 1, 1, 1, 1, 1, 0],
+        [0, 1, 2, 2, 2, 2, 1, 0],
+        [0, 1, 2, 2, 2, 2, 1, 0],
+        [0, 1, 2, 2, 2, 2, 1, 0],
+        [0, 1, 2, 3, 3, 2, 1, 0],
+        [0, 1, 1, 1, 1, 1, 1, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0]
+    ];
+
+    static tileColors = ['black', 'gray', 'blue', 'brown'];
+
     constructor() {
         this.grid = [];
-        this.gridSizeI = 3; // Adjust size to fit the houses
-        this.gridSizeJ = 4;
+        this.houses = [];
+        this.gridSizeI = 8; // Adjust size to fit the houses
+        this.gridSizeJ = 16;
         this.tilesPerHouse = 8;
         this.initGrid();
         this.buildCity();
@@ -14,36 +29,14 @@ export default class City {
         this.grid = Array(this.gridSizeI * this.tilesPerHouse).fill(null).map(() =>
             Array(this.gridSizeJ * this.tilesPerHouse).fill(null)
         );
-        for (let i = 0; i < this.grid.length; i++) {
-            for (let j = 0; j < this.grid[i].length; j++) this.grid[i][j] = null;
-        }
     }
 
     // Add a house to the grid
     addHouse(startX, startY) {
-        const houseMap = [
-            [0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 1, 1, 1, 1, 1, 1, 0],
-            [0, 1, 2, 2, 2, 2, 1, 0],
-            [0, 1, 2, 2, 2, 2, 1, 0],
-            [0, 1, 2, 2, 2, 2, 1, 0],
-            [0, 1, 2, 3, 3, 2, 1, 0],
-            [0, 1, 1, 1, 1, 1, 1, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0]
-        ];
-        for (let i = 0; i < houseMap.length; i++) {
-            for (let j = 0; j < houseMap[i].length; j++) {
-                const tileType = houseMap[i][j];
-                //Add tile based on tileType
-                if (tileType === 0) {
-                    this.grid[startX + i][startY + j] = 'black';
-                } else if (tileType === 1) {
-                    this.grid[startX + i][startY + j] = 'gray';
-                } else if (tileType === 2) {
-                    this.grid[startX + i][startY + j] = 'blue';
-                } else if (tileType === 3) {
-                    this.grid[startX + i][startY + j] = 'brown';
-                }
+        for (let i = 0; i < City.houseMap.length; i++) {
+            for (let j = 0; j < City.houseMap[i].length; j++) {
+                const tileType = City.houseMap[i][j];
+                this.grid[startX + i][startY + j] = City.tileColors[tileType];
             }
         }
     }
@@ -57,9 +50,16 @@ export default class City {
 
         for (let row = 0; row < this.gridSizeI; row += 1) {
             for (let col = 0; col < this.gridSizeJ; col += 1) {
-                this.addHouse(row * spaceForHouses, col * spaceForHouses);
+                const houseX = col * spaceForHouses;
+                const houseY = row * spaceForHouses;
+                this.addHouse(houseY, houseX);
+                this.houses.push({
+                    x: houseX,
+                    y: houseY,
+                    allegiance: Math.random() < 0.5 ? 'black' : 'white',
+                    isDestroyed: false
+                });
             }
         }
     }
-
 }

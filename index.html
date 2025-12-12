@@ -2,12 +2,33 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>B-MAN</title>
+    <title>Noir City</title>
+    <link rel="stylesheet" href="style.css">
 </head>
-<!-- Ensure Phaser library loads before the index.js file -->
-<script src="lib/phaser.min.js"></script>
-<script type="module" src="index.js"></script>
 <body>
+    <div id="score-board">
+        <div>Black Agents: <span id="black-score">0</span></div>
+        <div>White Agents: <span id="white-score">0</span></div>
+        <div>Gray Agents: <span id="gray-score">0</span></div>
+        <hr>
+        <div>Black Houses Destroyed: <span id="black-destroyed-score">0</span></div>
+        <div>White Houses Destroyed: <span id="white-destroyed-score">0</span></div>
+    </div>
 
+    <div id="game-over-overlay"></div>
+
+    <div id="dialogue-overlay">
+        <div id="dialogue-box">
+            <div id="dialogue-text"></div>
+            <div id="dialogue-options"></div>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script type="module">
+        import Game from './Game.js';
+        new Game();
+    </script>
 </body>
 </html>

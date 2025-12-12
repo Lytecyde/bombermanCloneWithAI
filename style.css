@@ -1,0 +1,101 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&display=swap');
+
+body {
+    margin: 0;
+    overflow: hidden;
+    background-color: #1a1a1a;
+    font-family: 'Cinzel', serif;
+}
+
+canvas {
+    display: block;
+}
+
+#score-board {
+    position: absolute;
+    top: 15px;
+    left: 15px;
+    color: #e0e0e0;
+    background: rgba(0, 0, 0, 0.7);
+    padding: 15px;
+    border: 2px solid #c9a227;
+    border-radius: 0;
+    box-shadow: 0 0 15px rgba(201, 162, 39, 0.5);
+    z-index: 10;
+    width: 280px;
+}
+
+#score-board hr {
+    border: 1px solid #c9a227;
+    margin: 15px 0;
+}
+
+#game-over-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    color: #c9a227;
+    font-size: 120px;
+    text-shadow: 0 0 20px #000;
+    display: none;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    z-index: 100;
+}
+
+#dialogue-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    display: none;
+    justify-content: center;
+    align-items: flex-end;
+    z-index: 50;
+}
+
+#dialogue-box {
+    width: 80%;
+    max-width: 800px;
+    height: 180px;
+    background: #1c1c1c;
+    border-top: 4px double #c9a227;
+    padding: 25px;
+    color: #e0e0e0;
+    font-family: 'Helvetica Neue', sans-serif;
+    font-size: 18px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 -5px 20px rgba(0,0,0,0.5);
+}
+
+#dialogue-text {
+    flex-grow: 1;
+    font-size: 22px;
+    font-family: 'Cinzel', serif;
+}
+
+#dialogue-options button {
+    padding: 12px 25px;
+    margin-right: 15px;
+    cursor: pointer;
+    background-color: #c9a227;
+    color: #1a1a1a;
+    border: none;
+    font-family: 'Cinzel', serif;
+    font-weight: 700;
+    font-size: 16px;
+    text-transform: uppercase;
+    transition: background-color 0.3s, color 0.3s;
+}
+
+#dialogue-options button:hover {
+    background-color: #e0e0e0;
+    color: #1a1a1a;
+}
