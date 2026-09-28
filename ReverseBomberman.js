@@ -9,6 +9,7 @@ const COLS = 17;
 const ROWS = 13;
 const NUM_BOMBERS = 12;
 const WOOD_PROB = 0.55;
+const MIN_CONNECTED_TILES = 70; // floor tiles guaranteed reachable from the player's spawn
 const SURVIVAL_TARGET = 90; // seconds
 const BOMB_FUSE = 2.2; // seconds
 const BOMB_RADIUS = 2; // tiles
@@ -57,7 +58,12 @@ export default class ReverseBomberman {
         this.bombers = [];
         this.keys = {};
         this.elapsed = 0;
-        this.state = 'loading'; // loading -> playing -> won | lost
+        this.state = 'loading'; // loading -> playing -> lost | survived | eliminated
+        this.hud = {
+            timer: document.getElementById('rb-timer'),
+            bombers: document.getElementById('rb-bombers'),
+            overlay: document.getElementById('rb-overlay')
+        };
         this.easystar = new window.EasyStar();
         this.easystar.setAcceptableTiles([0]);
         this.easystar.setIterationsPerCalculation(1000);
@@ -93,7 +99,23 @@ export default class ReverseBomberman {
 
     // ---- map generation ----------------------------------------------------
 
+    // Random wood placement routinely seals the player's spawn into a tiny pocket
+    // (WOOD_PROB=0.55 means only 45% of interior cells start open, which is below
+    // the ~59% site-percolation threshold for a square lattice - so most random
+    // layouts do NOT have one giant connected region). Re-rolling the whole map
+    // and hoping for a better roll doesn't reliably fix that. Instead, flood-fill
+    // from the player and deterministically carve open whichever wood tiles border
+    // the reachable region until it's provably large enough for 12 bombers to
+    // spawn in and path through.
     generateGrid() {
+        this.buildRandomGrid();
+        this.clearTile(1, 1);
+        this.clearTile(2, 1);
+        this.clearTile(1, 2);
+        this.ensureConnectedRegion(1, 1, MIN_CONNECTED_TILES);
+    }
+
+    buildRandomGrid() {
         this.grid = [];
         for (let y = 0; y < ROWS; y++) {
             const row = [];
@@ -108,10 +130,56 @@ export default class ReverseBomberman {
             }
             this.grid.push(row);
         }
+    }
 
-        this.clearTile(1, 1);
-        this.clearTile(2, 1);
-        this.clearTile(1, 2);
+    ensureConnectedRegion(startX, startY, minSize) {
+        this.reachableFromPlayer = this.floodFillOpenTiles(startX, startY);
+        while (this.reachableFromPlayer.size < minSize) {
+            const woodTile = this.findFrontierWood();
+            if (!woodTile) break; // no wood left to open; this is as connected as the map gets
+            this.grid[woodTile.y][woodTile.x] = null;
+            this.reachableFromPlayer = this.floodFillOpenTiles(startX, startY);
+        }
+    }
+
+    // A wood tile immediately next to the currently-reachable region. Opening one
+    // is guaranteed to grow the reachable set by at least one tile, so repeatedly
+    // carving these out always converges instead of relying on random luck.
+    findFrontierWood() {
+        const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+        const candidates = [];
+        for (const key of this.reachableFromPlayer) {
+            const [x, y] = key.split(',').map(Number);
+            for (const [dx, dy] of dirs) {
+                const nx = x + dx, ny = y + dy;
+                if (this.grid[ny] && this.grid[ny][nx] === 'wood') candidates.push({ x: nx, y: ny });
+            }
+        }
+        if (candidates.length === 0) return null;
+        return candidates[Math.floor(Math.random() * candidates.length)];
+    }
+
+    // BFS over floor tiles only (wood and walls both block it), matching what the
+    // NPC pathfinder can actually traverse.
+    floodFillOpenTiles(startX, startY) {
+        const reachable = new Set();
+        const key = (x, y) => `${x},${y}`;
+        if (this.grid[startY][startX] !== null) return reachable;
+        const queue = [{ x: startX, y: startY }];
+        reachable.add(key(startX, startY));
+        const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+        while (queue.length > 0) {
+            const { x, y } = queue.shift();
+            for (const [dx, dy] of dirs) {
+                const nx = x + dx, ny = y + dy;
+                if (!this.grid[ny] || this.grid[ny][nx] !== null) continue;
+                const k = key(nx, ny);
+                if (reachable.has(k)) continue;
+                reachable.add(k);
+                queue.push({ x: nx, y: ny });
+            }
+        }
+        return reachable;
     }
 
     clearTile(x, y) {
@@ -129,10 +197,12 @@ export default class ReverseBomberman {
         this.player.x = 1 * TS + TS / 2;
         this.player.y = 1 * TS + TS / 2;
 
+        // Only spawn bombers where the flood fill proved they can actually reach
+        // (and be reached from) the player's pocket of the map.
         const candidates = [];
         for (let y = 1; y < ROWS - 1; y++) {
             for (let x = 1; x < COLS - 1; x++) {
-                if (this.grid[y][x] === 'wall') continue;
+                if (!this.reachableFromPlayer.has(`${x},${y}`)) continue;
                 const dist = Math.abs(x - 1) + Math.abs(y - 1);
                 if (dist >= 6) candidates.push({ x, y });
             }
@@ -142,19 +212,11 @@ export default class ReverseBomberman {
             [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
         }
 
+        // Candidates come from the flood-fill set, so they're already open floor
+        // tiles with a walkable neighbor - no need to carve anything out here.
         const spawns = candidates.slice(0, NUM_BOMBERS);
-        spawns.forEach((tile, i) => {
-            this.clearTile(tile.x, tile.y);
-            const neighbors = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-            for (const [dx, dy] of neighbors) {
-                const nx = tile.x + dx, ny = tile.y + dy;
-                if (this.grid[ny] && this.grid[ny][nx] !== 'wall') {
-                    this.clearTile(nx, ny);
-                    break;
-                }
-            }
+        spawns.forEach(tile => {
             this.bombers.push({
-                id: i,
                 x: tile.x * TS + TS / 2,
                 y: tile.y * TS + TS / 2,
                 gridX: tile.x,
@@ -168,13 +230,16 @@ export default class ReverseBomberman {
                 alive: true
             });
         });
-        this.updateEasystarGrid();
     }
 
     // ---- input ---------------------------------------------------------------
 
     addEventListeners() {
-        document.addEventListener('keydown', e => { this.keys[e.key] = true; });
+        const movementKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'a', 'd', 'w', 's'];
+        document.addEventListener('keydown', e => {
+            if (movementKeys.includes(e.key)) e.preventDefault();
+            this.keys[e.key] = true;
+        });
         document.addEventListener('keyup', e => { this.keys[e.key] = false; });
     }
 
@@ -201,13 +266,12 @@ export default class ReverseBomberman {
 
     // ---- bombers -----------------------------------------------------------
 
+    // A wall (or an intervening wood block) stops a blast dead, so a raw row/column
+    // radius check flags tiles as dangerous that a bomb can never actually reach.
+    // Reuse the same propagation the real explosion uses so the AI's idea of
+    // "dangerous" matches reality.
     isBlastDanger(x, y) {
-        return this.bombs.some(b => {
-            if (b.exploded) return false;
-            if (b.tileX === x && Math.abs(b.tileY - y) <= b.radius) return true;
-            if (b.tileY === y && Math.abs(b.tileX - x) <= b.radius) return true;
-            return false;
-        });
+        return this.bombs.some(b => !b.exploded && this.getBlastCells(b.tileX, b.tileY, b.radius).some(c => c.x === x && c.y === y));
     }
 
     pickSafeTarget(bomber) {
@@ -257,7 +321,14 @@ export default class ReverseBomberman {
             const wx = waypoint.x * TS + TS / 2;
             const wy = waypoint.y * TS + TS / 2;
             if (this.isTileBlocked(waypoint.x, waypoint.y) && !(waypoint.x === bomber.gridX && waypoint.y === bomber.gridY)) {
-                // a bomb is sitting on the next tile; wait it out
+                // A bomb is sitting on the next tile. Standing still and waiting for it
+                // to clear is fine when it's safe here, but if this spot is itself in a
+                // blast line, waiting is how a bomber dies - abandon the route and pick
+                // a fresh (danger-avoiding) target instead of freezing in place.
+                if (this.isBlastDanger(bomber.gridX, bomber.gridY)) {
+                    bomber.currentPath = [];
+                    this.requestBomberPath(bomber);
+                }
             } else {
                 const dx = wx - bomber.x, dy = wy - bomber.y;
                 const dist = Math.hypot(dx, dy);
@@ -303,26 +374,40 @@ export default class ReverseBomberman {
         this.bombs.push({ tileX, tileY, timer: BOMB_FUSE, radius: BOMB_RADIUS, exploded: false });
     }
 
-    explodeBomb(bomb) {
-        bomb.exploded = true;
-        const cells = [{ x: bomb.tileX, y: bomb.tileY }];
+    // Cells a blast from (tileX,tileY) actually reaches: a wall stops it outright,
+    // a wood block absorbs the hit and stops it one tile further. Shared by the
+    // real explosion and by isBlastDanger so the AI's notion of "dangerous" can
+    // never drift from what actually happens when a bomb goes off.
+    getBlastCells(tileX, tileY, radius) {
+        const cells = [{ x: tileX, y: tileY }];
         const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
         for (const [dx, dy] of dirs) {
-            for (let step = 1; step <= bomb.radius; step++) {
-                const nx = bomb.tileX + dx * step;
-                const ny = bomb.tileY + dy * step;
+            for (let step = 1; step <= radius; step++) {
+                const nx = tileX + dx * step;
+                const ny = tileY + dy * step;
                 if (!this.grid[ny] || this.grid[ny][nx] === undefined) break;
                 const tile = this.grid[ny][nx];
                 if (tile === 'wall') break;
                 cells.push({ x: nx, y: ny });
-                if (tile === 'wood') {
-                    this.grid[ny][nx] = null;
-                    this.updateEasystarGrid();
-                    break;
-                }
+                if (tile === 'wood') break;
             }
         }
-        cells.forEach(c => this.explosions.push({ x: c.x, y: c.y, timer: EXPLOSION_DURATION }));
+        return cells;
+    }
+
+    explodeBomb(bomb) {
+        bomb.exploded = true;
+        const cells = this.getBlastCells(bomb.tileX, bomb.tileY, bomb.radius);
+
+        let woodDestroyed = false;
+        cells.forEach(c => {
+            if (this.grid[c.y][c.x] === 'wood') {
+                this.grid[c.y][c.x] = null;
+                woodDestroyed = true;
+            }
+            this.explosions.push({ x: c.x, y: c.y, timer: EXPLOSION_DURATION });
+        });
+        if (woodDestroyed) this.updateEasystarGrid();
 
         // chain reaction: any other live bomb caught in this blast goes off too, with a
         // brief stagger so a long line of bombs ripples visibly instead of vanishing in one frame
@@ -390,14 +475,14 @@ export default class ReverseBomberman {
     endGame(result) {
         if (this.state !== 'playing') return;
         this.state = result;
-        const overlay = document.getElementById('rb-overlay');
+        const overlay = this.hud.overlay;
         const seconds = Math.floor(this.elapsed);
         if (result === 'lost') {
             overlay.textContent = `Caught in the blast! Survived ${seconds}s`;
         } else if (result === 'survived') {
             overlay.textContent = `You survived the full ${SURVIVAL_TARGET}s!`;
         } else if (result === 'eliminated') {
-            overlay.textContent = 'All 12 bombers blew themselves up. You win!';
+            overlay.textContent = `All ${NUM_BOMBERS} bombers blew themselves up. You win!`;
         }
         overlay.style.display = 'flex';
     }
@@ -418,8 +503,8 @@ export default class ReverseBomberman {
             this.endGame('survived');
         }
 
-        document.getElementById('rb-timer').textContent = Math.max(0, Math.ceil(SURVIVAL_TARGET - this.elapsed));
-        document.getElementById('rb-bombers').textContent = this.bombers.length;
+        this.hud.timer.textContent = Math.max(0, Math.ceil(SURVIVAL_TARGET - this.elapsed));
+        this.hud.bombers.textContent = this.bombers.length;
     }
 
     // ---- rendering -------------------------------------------------------
